@@ -196,8 +196,9 @@ def finish(message):
 
     bot.send_message(
         chat_id,
-        "✅ Вы успешно записаны!\n🚶Приходите по адресу Сочи, Тепличная улица, 71/6, квартира 29",
+        "✅ Вы успешно записаны!\n🚶Приходите по адресу Сочи, Тепличная улица, 71/6, квартира 29\n<i>Введите команду <b>my_record</b>, чтобы посмотреть свою запись и отменить (если нужно)</i>",
         reply_markup=types.ReplyKeyboardRemove(),
+        parse_mode="HTML",
     )
     bot.send_message(
         ADMIN_ID, f"🔔 Новая запись: {d['name']} на {d['day']} {d['time']}"
@@ -241,22 +242,25 @@ def add_slot_times(message):
 
 @bot.message_handler(commands=["my_record"])
 def my_record(message):
-    record = database.get_active_zayvka(message.from_user.id)
-    if record:
-        day, time, usluga = record
-        kb = types.InlineKeyboardMarkup()
-        kb.add(
-            types.InlineKeyboardButton(
-                "❌ Отменить запись", callback_data="cancel_my_visit"
-            )
-        )
-        bot.send_message(
-            message.chat.id,
-            f"Вы записаны на {day} в {time}\nУслуга: {usluga}",
-            reply_markup=kb,
-        )
+    if message.chat.id == ADMIN_ID:
+        bot.send_message(message.chat.id, "Это команда для клиентов")
     else:
-        bot.send_message(message.chat.id, "У вас нет активных записей.")
+        record = database.get_active_zayvka(message.from_user.id)
+        if record:
+            day, time, usluga = record
+            kb = types.InlineKeyboardMarkup()
+            kb.add(
+                types.InlineKeyboardButton(
+                    "❌ Отменить запись", callback_data="cancel_my_visit"
+                )
+            )
+            bot.send_message(
+                message.chat.id,
+                f"Вы записаны на {day} в {time}\nУслуга: {usluga}",
+                reply_markup=kb,
+            )
+        else:
+            bot.send_message(message.chat.id, "У вас нет активных записей.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_my_visit")
