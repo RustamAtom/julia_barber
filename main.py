@@ -8,7 +8,7 @@ import database
 from telebot.types import InputMediaPhoto
 
 TOKEN = "8961646222:AAENFuTWtfrX1LTRP5Pjpud7QN6RO1DVtUE"
-ADMIN_ID = 5068250115
+ADMIN_ID = 6347160865
 
 bot = telebot.TeleBot(TOKEN)
 user_data = {}
