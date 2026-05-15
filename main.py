@@ -55,8 +55,6 @@ def portfolio(call):
         f8 = open("img8.jpg", "rb")
         f9 = open("img9.jpg", "rb")
         f10 = open("img10.jpg", "rb")
-        f11 = open("img11.jpg", "rb")
-        f12 = open("img12.jpg", "rb")
 
         media = [
             InputMediaPhoto(f1),  # type: ignore
@@ -69,8 +67,6 @@ def portfolio(call):
             InputMediaPhoto(f8),  # type: ignore
             InputMediaPhoto(f9),  # type: ignore
             InputMediaPhoto(f10),  # type: ignore
-            InputMediaPhoto(f11),  # type: ignore
-            InputMediaPhoto(f12),  # type: ignore
         ]
 
         bot.send_media_group(call.message.chat.id, media)  # type: ignore
@@ -241,6 +237,42 @@ def add_slot_times(message):
 
     bot.send_message(ADMIN_ID, f"✅ Добавлено: {added}\n⚠️ Дубликаты: {skipped}")
     admin_menu()
+
+
+@bot.message_handler(commands=["my_record"])
+def my_record(message):
+    record = database.get_active_zayvka(message.from_user.id)
+    if record:
+        day, time, usluga = record
+        kb = types.InlineKeyboardMarkup()
+        kb.add(
+            types.InlineKeyboardButton(
+                "❌ Отменить запись", callback_data="cancel_my_visit"
+            )
+        )
+        bot.send_message(
+            message.chat.id,
+            f"Вы записаны на {day} в {time}\nУслуга: {usluga}",
+            reply_markup=kb,
+        )
+    else:
+        bot.send_message(message.chat.id, "У вас нет активных записей.")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "cancel_my_visit")
+def handle_cancel(call):
+    if database.cancel_zayvka(call.from_user.id):
+        bot.edit_message_text(
+            "✅ Ваша запись успешно отменена!",
+            call.message.chat.id,
+            call.message.message_id,
+        )
+        # Уведомление барберу (вставь свой ID)
+        bot.send_message(
+            ADMIN_ID, f"⚠️ Клиент @{call.from_user.username} отменил запись!"
+        )
+    else:
+        bot.answer_callback_query(call.id, "Запись не найдена или уже отменена.")
 
 
 def reminders():

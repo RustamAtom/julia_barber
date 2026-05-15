@@ -90,10 +90,37 @@ def free_slot(day, time):
 def cancel_zayvka(user_id):
     with sqlite3.connect(DB_NAME) as conn:
         cursor = conn.cursor()
+        # Сначала узнаем, какой день и время были у клиента, чтобы освободить слот
         cursor.execute(
-            "UPDATE clients SET status='cancelled' WHERE user_id=?", (user_id,)
+            "SELECT day, time FROM clients WHERE user_id=? AND status='active'",
+            (user_id,),
         )
-        conn.commit()
+        record = cursor.fetchone()
+
+        if record:
+            day, time = record
+            # 1. Помечаем заявку как отмененную
+            cursor.execute(
+                "UPDATE clients SET status='cancelled' WHERE user_id=?", (user_id,)
+            )
+            # 2. Освобождаем слот в таблице slots
+            cursor.execute(
+                "UPDATE slots SET is_free=1 WHERE day=? AND time=?", (day, time)
+            )
+            conn.commit()
+            return True
+        return False
+
+
+def get_active_zayvka(user_id):
+    """Специально для кнопки 'Моя запись'"""
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT day, time, usluga FROM clients WHERE user_id=? AND status='active'",
+            (user_id,),
+        )
+        return cursor.fetchone()
 
 
 def get_all_zayvki():
