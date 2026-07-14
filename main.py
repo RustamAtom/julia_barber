@@ -1,50 +1,48 @@
-# from datetime import datetime
-# import datetime
-# import telebot
-# from telebot import types
-# from telebot.types import InputMediaPhoto
-# from apscheduler.schedulers.background import BackgroundScheduler
-# import database
+from datetime import datetime, timedelta
 import telebot
 from telebot import types
-from datetime import datetime
+from telebot.types import InputMediaPhoto
 from apscheduler.schedulers.background import BackgroundScheduler
 import database
-from telebot.types import InputMediaPhoto
-import threading
-import time
 
 TOKEN = "8961646222:AAENFuTWtfrX1LTRP5Pjpud7QN6RO1DVtUE"
 ADMIN_ID = 5068250115
 
 bot = telebot.TeleBot(TOKEN)
 
-# user_data теперь хранит timestamp через datetime.now().timestamp()
+# Временные данные сессий
 user_data = {}
 admin_temp = {}
 
-# --- СПИСОК УСЛУГ ---
-SERVICES = [
-    {
-        "name": "Установка системы замещения волос",
-        "price": "8.000",
-        "duration": "3 часа",
-    },
-    {"name": "Стрижка мужская", "price": "1.500", "duration": "1 час"},
-    {"name": "Тонировка седины на голове", "price": "1.500", "duration": "30 минут"},
-    {"name": "Стрижка налысо", "price": "1.000", "duration": "30 минут"},
-    {"name": "Окантовка стрижки", "price": "800", "duration": "20 минут"},
-    {"name": "Восковая депиляция", "price": "500", "duration": "10 минут"},
-    {"name": "Ламинирование бровей", "price": "1.500", "duration": "30 минут"},
-    {"name": "Оформление бровей", "price": "1.000", "duration": "40 минут"},
-    {"name": "Стрижка женская", "price": "1.500", "duration": "1 час"},
-    {"name": "Укладка афрокудри", "price": "3.000", "duration": "1 час 30 минут"},
-    {"name": "LPG массаж лица", "price": "1.000", "duration": "30 минут"},
-    {"name": "Женский массаж LPG", "price": "1.500", "duration": "50 минут"},
-    {"name": "Мужской массаж LPG", "price": "от 2.000", "duration": "1 час"},
-    {"name": "Укладка", "price": "700", "duration": "20 минут"},
-    {"name": "Оконтовка бороды", "price": "500", "duration": "15 минут"},
-    {"name": "Оформление бороды и усов", "price": "1.000", "duration": "30 минут"},
+# Сетка времени для быстрого добавления барбером (шаг 30 минут)
+HOURS_GRID = [
+    "08:00",
+    "08:30",
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+    "14:00",
+    "14:30",
+    "15:00",
+    "15:30",
+    "16:00",
+    "16:30",
+    "17:00",
+    "17:30",
+    "18:00",
+    "18:30",
+    "19:00",
+    "19:30",
+    "20:00",
+    "20:30",
+    "21:00",
 ]
 
 WELCOME_TEXT = "Привет! На связи Юлия. Твой стиль — это моя работа. ✂️\n\nЯ создаю не просто стрижки, а образ, который придает уверенности. В этом боте ты можешь записаться на удобное время, посмотреть мои работы и узнать актуальный прайс."
@@ -54,7 +52,7 @@ WELCOME_TEXT = "Привет! На связи Юлия. Твой стиль — 
 @bot.message_handler(commands=["start"])
 def start(message):
     if message.chat.id == ADMIN_ID:
-        admin_menu()
+        admin_menu(message.chat.id)
     else:
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
@@ -95,26 +93,40 @@ def portfolio(call):
 
 
 # --- АДМИН ПАНЕЛЬ ---
-def admin_menu():
+def admin_menu(chat_id=ADMIN_ID):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📅 Добавить слот", callback_data="add_slot"),
+        types.InlineKeyboardButton("📅 Добавить слоты", callback_data="add_slot"),
         types.InlineKeyboardButton("📝 Заявки", callback_data="list"),
     )
-    bot.send_message(ADMIN_ID, "⚙️ Админ-панель", reply_markup=markup)
+    bot.send_message(chat_id, "⚙️ Админ-панель", reply_markup=markup)
 
 
-# --- КНОПКА «ЗАПИСАТЬСЯ» ---
+@bot.callback_query_handler(func=lambda call: call.data == "back_to_admin")
+def back_to_admin_callback(call):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("📅 Добавить слоты", callback_data="add_slot"),
+        types.InlineKeyboardButton("📝 Заявки", callback_data="list"),
+    )
+    bot.edit_message_text(
+        "⚙️ Админ-панель",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
+
+
+# --- КЛИЕНТ: ЗАПИСЬ (НАЧАЛО) ---
 @bot.callback_query_handler(func=lambda call: call.data == "start_z")
 def start_booking(call):
     chat_id = call.message.chat.id
-    # Заменяем time.time() на datetime.now().timestamp()
     user_data[chat_id] = {"timestamp": datetime.now().timestamp()}
     msg = bot.send_message(chat_id, "👤 Введите ваше имя:")
     bot.register_next_step_handler(msg, get_name)
 
 
-# --- ЛОГИКА ЗАПИСИ ---
+# --- ЛОГИКА ЗАПИСИ (КЛИЕНТ) ---
 def get_name(message):
     chat_id = message.chat.id
     if chat_id not in user_data:
@@ -147,57 +159,70 @@ def get_phone(message):
     user_data[chat_id]["phone"] = phone
     user_data[chat_id]["timestamp"] = datetime.now().timestamp()
 
-    bot.send_message(
-        chat_id,
-        "Отлично! Переходим к выбору услуг...",
-        reply_markup=types.ReplyKeyboardRemove(),
+    # ТВОЙ ОРИГИНАЛЬНЫЙ ФОРМАТ УСЛУГ (КЛИЕНТ ВИДИТ ВСЁ ПОЛНОСТЬЮ)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    markup.add(
+        "Установка системы замещения волос | 8.000 рублей | 3 часа",
+        "Стрижка мужская | 1.500 рублей | 1 час",
+        "Тонировка седины на голове | 1.500 рублей | 30 минут",
+        "Стрижка налысо | 1.000 рублей | 30 минут",
+        "Окантовка стрижки | 800 рублей | 20 минут",
+        "Восковая депиляция | 500 рублей | 10 минут",
+        "Ламинирование бровей | 1.500 рублей | 30 минут",
+        "Оформление бровей | 1.000 рублей | 40 минут",
+        "Стрижка женская | 1.500 рублей | 1 час",
+        "Укладка афрокудри | 3.000 рублей | 1 час 30 минут",
+        "LPG массаж лица | 1.000 рублей | 30 минут",
+        "Женский массаж LPG | 1.500 рублей | 50 минут",
+        "Мужской массаж LPG | от 2.000 рублей | 1 час",
+        "Укладка | 700 рублей | 20 минут",
+        "Оконтовка бороды | 500 рублей | 15 минут",
+        "Оформление бороды и усов | 1.000 рублей | 30 минут",
     )
+    msg = bot.send_message(
+        chat_id,
+        "🎫 Выберите услугу:\n<i>Внизу предоставлены услуги в формате УСЛУГА | ЦЕНА | ДЛИТЕЛЬНОСТЬ РАБОТЫ</i>",
+        reply_markup=markup,
+        parse_mode="HTML",
+    )
+    bot.register_next_step_handler(msg, get_service)
 
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for i, svc in enumerate(SERVICES):
-        btn_text = f"{svc['name']} | {svc['price']} ₽ ({svc['duration']})"
-        markup.add(types.InlineKeyboardButton(btn_text, callback_data=f"svc_{i}"))
 
-    bot.send_message(chat_id, "🎫 Выберите услугу из списка:", reply_markup=markup)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("svc_"))
-def handle_select_service(call):
-    chat_id = call.message.chat.id
+def get_service(message):
+    chat_id = message.chat.id
     if chat_id not in user_data:
-        bot.send_message(
-            chat_id, "⚠️ Сессия устарела. Начните запись заново через /start"
-        )
         return
 
-    svc_index = int(call.data.split("_")[1])
-    selected_svc = SERVICES[svc_index]
-    user_data[chat_id]["usluga"] = f"{selected_svc['name']} | {selected_svc['price']} ₽"
+    user_data[chat_id]["usluga"] = message.text
     user_data[chat_id]["timestamp"] = datetime.now().timestamp()
 
     days = database.get_available_days()
     if not days:
-        bot.edit_message_text(
-            "❌ Извините, свободных дней для записи пока нет.",
+        bot.send_message(
             chat_id,
-            call.message.message_id,
+            "❌ Свободных дат пока нет.",
+            reply_markup=types.ReplyKeyboardRemove(),
         )
         return
 
+    # Красиво удаляем Reply-клавиатуру перед переходом на инлайн-шаг
+    bot.send_message(
+        chat_id,
+        "Принято! Теперь выберите день...",
+        reply_markup=types.ReplyKeyboardRemove(),
+    )
+
+    # Строим инлайн-кнопки для дней
     markup = types.InlineKeyboardMarkup(row_width=3)
     buttons = [
         types.InlineKeyboardButton(day, callback_data=f"day_{day}") for day in days
     ]
     markup.add(*buttons)
 
-    bot.edit_message_text(
-        "📅 Выберите желаемый день:",
-        chat_id,
-        call.message.message_id,
-        reply_markup=markup,
-    )
+    bot.send_message(chat_id, "📅 Выберите желаемый день:", reply_markup=markup)
 
 
+# --- ОБРАБОТКА ВЫБОРА ДНЯ (КЛИЕНТ) ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("day_"))
 def handle_select_day(call):
     chat_id = call.message.chat.id
@@ -220,6 +245,7 @@ def handle_select_day(call):
         )
         return
 
+    # Строим инлайн-кнопки для времени
     markup = types.InlineKeyboardMarkup(row_width=4)
     buttons = [types.InlineKeyboardButton(t, callback_data=f"time_{t}") for t in times]
     markup.add(*buttons)
@@ -232,6 +258,7 @@ def handle_select_day(call):
     )
 
 
+# --- ЗАВЕРШЕНИЕ ЗАПИСИ (КЛИЕНТ) ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("time_"))
 def handle_select_time(call):
     chat_id = call.message.chat.id
@@ -244,7 +271,6 @@ def handle_select_time(call):
     t_val = call.data.split("_")[1]
     user_data[chat_id]["time"] = t_val
     d = user_data[chat_id]
-
     database.save_zayvka(
         chat_id, d["name"], d["phone"], d["usluga"], d["day"], d["time"]
     )
@@ -323,50 +349,111 @@ def list_zayvki(call):
             bot.send_message(ADMIN_ID, text)
 
 
-# --- АДМИН: ДОБАВЛЕНИЕ СЛОТОВ ---
+# --- АДМИН: ИНЛАЙН ДОБАВЛЕНИЕ СЛОТОВ (БЕЗ РУЧНОГО ВВОДА) ---
+
+
+# Шаг 1: Показываем инлайн-кнопки с датами (ближайшие 10 дней)
 @bot.callback_query_handler(func=lambda call: call.data == "add_slot")
 def start_add_slot(call):
-    msg = bot.send_message(ADMIN_ID, "📅 Введите дату в формате ДД.ММ:")
-    bot.register_next_step_handler(msg, add_slot_date)
+    now = datetime.now()
+    markup = types.InlineKeyboardMarkup(row_width=3)
+    buttons = []
+
+    for i in range(10):
+        day_str = (now + timedelta(days=i)).strftime("%d.%m")
+        buttons.append(
+            types.InlineKeyboardButton(day_str, callback_data=f"adm_date_{day_str}")
+        )
+
+    markup.add(*buttons)
+    markup.add(types.InlineKeyboardButton("🚪 В меню", callback_data="back_to_admin"))
+
+    bot.edit_message_text(
+        "📅 Выберите дату, на которую хотите добавить свободное время:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
 
 
-def add_slot_date(message):
-    date_str = message.text.strip()
+# Шаг 2: Показываем сетку времени и список уже добавленных слотов на выбранную дату
+@bot.callback_query_handler(func=lambda call: call.data.startswith("adm_date_"))
+def handle_admin_select_date(call):
+    day = call.data.split("_")[2]
+    admin_temp[call.message.chat.id] = {"day": day}
+
+    existing_slots = database.get_free_slot(day)
+    slots_text = ", ".join(existing_slots) if existing_slots else "нет свободных слотов"
+
+    markup = types.InlineKeyboardMarkup(row_width=4)
+    buttons = [
+        types.InlineKeyboardButton(t, callback_data=f"adm_add_time_{t}")
+        for t in HOURS_GRID
+    ]
+    markup.add(*buttons)
+    markup.add(
+        types.InlineKeyboardButton("🔙 К выбору даты", callback_data="add_slot"),
+        types.InlineKeyboardButton("✅ Готово", callback_data="back_to_admin"),
+    )
+
+    bot.edit_message_text(
+        f"📅 <b>Дата: {day}</b>\n"
+        f"🟢 Сейчас активны слоты: <code>{slots_text}</code>\n\n"
+        f"👇 Нажмите на время ниже, чтобы добавить его в расписание:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML",
+    )
+
+
+# Шаг 3: Добавляем время по клику и мгновенно обновляем интерфейс
+@bot.callback_query_handler(func=lambda call: call.data.startswith("adm_add_time_"))
+def handle_admin_add_time(call):
+    chat_id = call.message.chat.id
+    if chat_id not in admin_temp or "day" not in admin_temp[chat_id]:
+        bot.answer_callback_query(
+            call.id, "❌ Сессия устарела. Выберите дату заново.", show_alert=True
+        )
+        return
+
+    day = admin_temp[chat_id]["day"]
+    time_val = call.data.split("_")[3]
+
+    added = database.add_slot(day, time_val)
+
+    if added:
+        bot.answer_callback_query(call.id, f"✅ Слот {time_val} добавлен!")
+    else:
+        bot.answer_callback_query(call.id, f"⚠️ Слот {time_val} уже есть.")
+
+    # Мгновенно обновляем список слотов на экране, сохраняя сетку кнопок
+    existing_slots = database.get_free_slot(day)
+    slots_text = ", ".join(existing_slots) if existing_slots else "нет свободных слотов"
+
+    markup = types.InlineKeyboardMarkup(row_width=4)
+    buttons = [
+        types.InlineKeyboardButton(t, callback_data=f"adm_add_time_{t}")
+        for t in HOURS_GRID
+    ]
+    markup.add(*buttons)
+    markup.add(
+        types.InlineKeyboardButton("🔙 К выбору даты", callback_data="add_slot"),
+        types.InlineKeyboardButton("✅ Готово", callback_data="back_to_admin"),
+    )
+
     try:
-        current_year = datetime.now().year
-        input_date = datetime.strptime(f"{date_str}.{current_year}", "%d.%m.%Y")
-        if input_date.date() < datetime.now().date():
-            msg = bot.send_message(
-                ADMIN_ID, "❌ Эта дата уже в прошлом!\nВведите дату ещё раз:"
-            )
-            bot.register_next_step_handler(msg, add_slot_date)
-            return
-
-        admin_temp[message.chat.id] = {"day": date_str}
-        msg = bot.send_message(
-            ADMIN_ID, "🕰 Введите время через запятую (напр. 10:00, 11:30):"
+        bot.edit_message_text(
+            f"📅 <b>Дата: {day}</b>\n"
+            f"🟢 Сейчас активны слоты: <code>{slots_text}</code>\n\n"
+            f"👇 Нажмите на время ниже, чтобы добавить его в расписание:",
+            chat_id,
+            call.message.message_id,
+            reply_markup=markup,
+            parse_mode="HTML",
         )
-        bot.register_next_step_handler(msg, add_slot_times)
-    except ValueError:
-        msg = bot.send_message(
-            ADMIN_ID, "❌ Неверный формат даты. Используй ДД.ММ. Введите еще раз:"
-        )
-        bot.register_next_step_handler(msg, add_slot_date)
-
-
-def add_slot_times(message):
-    day = admin_temp[message.chat.id]["day"]
-    times = [t.strip() for t in message.text.split(",")]
-    added, skipped = 0, 0
-
-    for t in times:
-        if database.add_slot(day, t):
-            added += 1
-        else:
-            skipped += 1
-
-    bot.send_message(ADMIN_ID, f"✅ Добавлено: {added}\n⚠️ Дубликаты: {skipped}")
-    admin_menu()
+    except Exception:
+        pass
 
 
 # --- АВТОМАТИЧЕСКИЕ ЗАДАЧИ ---
@@ -386,7 +473,6 @@ def clear_old():
     database.clear_old_records()
 
 
-# Сброс зависших сессий через datetime
 def auto_cancel_sessions():
     now = datetime.now().timestamp()
     expired_users = []
