@@ -8,7 +8,7 @@ import database
 from telebot.types import InputMediaPhoto
 
 TOKEN = "8961646222:AAENFuTWtfrX1LTRP5Pjpud7QN6RO1DVtUE"
-ADMIN_ID = 6347160865
+ADMIN_ID = 5068250115
 
 bot = telebot.TeleBot(TOKEN)
 user_data = {}
@@ -29,22 +29,13 @@ def start(message):
             types.InlineKeyboardButton("🖊 Записаться", callback_data="start_z"),
             types.InlineKeyboardButton("📸 Примеры работ", callback_data="portfolio"),
         )
-        # Если файла нет, просто отправь текст (но аватарку-то мы сделали!)
-        # try:
-        #     with open("watermarked_img_4037167827574499669.png", "rb") as photo:
-        #         bot.send_photo(message.chat.id, photo, caption=WELCOME_TEXT, reply_markup=markup)
-        # except:
-        #     bot.send_message(message.chat.id, WELCOME_TEXT, reply_markup=markup)
         bot.send_message(message.chat.id, WELCOME_TEXT, reply_markup=markup)
 
 
 # ПРИМЕРЫ РАБОТ (Требование №5)
 @bot.callback_query_handler(func=lambda call: call.data == "portfolio")
 def portfolio(call):
-    # Чтобы не было красных линий, сначала открываем файлы,
-    # а потом передаем их в список
     try:
-        # Убедись, что эти файлы РЕАЛЬНО лежат в папке с ботом
         f1 = open("img1.jpg", "rb")
         f2 = open("img2.jpg", "rb")
         f3 = open("img3.jpg", "rb")
@@ -71,8 +62,6 @@ def portfolio(call):
 
         bot.send_media_group(call.message.chat.id, media)  # type: ignore
 
-        # Важно: после отправки файлы лучше закрыть, но для простоты можно оставить так.
-        # Если хочешь совсем по красоте — кнопка записи после фото:
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🖊 Записаться", callback_data="start_z"))
         bot.send_message(
@@ -149,7 +138,7 @@ def get_phone(message):
     )
     msg = bot.send_message(
         message.chat.id,
-        "🎫 Выберите услугу:\n<i>Внизу предоставлены услуги в формате УСЛУГА | ЦЕНА | ПРОДОЛЖИТЕЛЬНОСТЬ</i>",
+        "🎫 Выберите услугу:\n<i>Внизу предоставлены услуги в формате УСЛУГА | ЦЕНА | ДЛИТЕЛЬНОСТЬ РАБОТЫ</i>",
         reply_markup=markup,
         parse_mode="HTML",
     )
@@ -196,7 +185,7 @@ def finish(message):
 
     bot.send_message(
         chat_id,
-        "✅ Вы успешно записаны!\n🚶Приходите по адресу Сочи, Тепличная улица, 71/6, квартира 29\n<i>Введите команду <b>my_record</b>, чтобы посмотреть свою запись и отменить (если нужно)</i>",
+        "✅ Вы успешно записаны!\nПриходите по адресу Сочи, Тепличная улица, 71/6, квартира 29\n<i>Введите команду @my_record, чтобы посмотреть свою запись и отменить, если нужно</i>",
         reply_markup=types.ReplyKeyboardRemove(),
         parse_mode="HTML",
     )
@@ -271,7 +260,6 @@ def handle_cancel(call):
             call.message.chat.id,
             call.message.message_id,
         )
-        # Уведомление барберу (вставь свой ID)
         bot.send_message(
             ADMIN_ID, f"⚠️ Клиент @{call.from_user.username} отменил запись!"
         )
