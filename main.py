@@ -1,21 +1,29 @@
-import time
-from datetime import datetime, time
+# from datetime import datetime
+# import datetime
+# import telebot
+# from telebot import types
+# from telebot.types import InputMediaPhoto
+# from apscheduler.schedulers.background import BackgroundScheduler
+# import database
 import telebot
 from telebot import types
-from telebot.types import InputMediaPhoto
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import database
+from telebot.types import InputMediaPhoto
+import threading
+import time
 
 TOKEN = "8961646222:AAENFuTWtfrX1LTRP5Pjpud7QN6RO1DVtUE"
 ADMIN_ID = 5068250115
 
 bot = telebot.TeleBot(TOKEN)
 
-# user_data теперь хранит: {"name": ..., "phone": ..., "usluga": ..., "day": ..., "time": ..., "timestamp": ...}
+# user_data теперь хранит timestamp через datetime.now().timestamp()
 user_data = {}
 admin_temp = {}
 
-# --- СПИСОК УСЛУГ (Предотвращает переполнение callback_data) ---
+# --- СПИСОК УСЛУГ ---
 SERVICES = [
     {
         "name": "Установка системы замещения волос",
@@ -61,11 +69,16 @@ def start(message):
 def portfolio(call):
     try:
         media = []
+        opened_files = []
         for i in range(1, 11):
             f = open(f"img{i}.jpg", "rb")
+            opened_files.append(f)
             media.append(InputMediaPhoto(f))  # type: ignore
 
         bot.send_media_group(call.message.chat.id, media)
+
+        for f in opened_files:
+            f.close()
 
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🖊 Записаться", callback_data="start_z"))
@@ -91,31 +104,31 @@ def admin_menu():
     bot.send_message(ADMIN_ID, "⚙️ Админ-панель", reply_markup=markup)
 
 
-# --- КНОПКА «ЗАПИСАТЬСЯ» (НАЧАЛО КВЕСТА) ---
+# --- КНОПКА «ЗАПИСАТЬСЯ» ---
 @bot.callback_query_handler(func=lambda call: call.data == "start_z")
 def start_booking(call):
     chat_id = call.message.chat.id
-    # Инициализируем сессию и ставим таймер активности
-    user_data[chat_id] = {"timestamp": time.time()}  # type: ignore
+    # Заменяем time.time() на datetime.now().timestamp()
+    user_data[chat_id] = {"timestamp": datetime.now().timestamp()}
     msg = bot.send_message(chat_id, "👤 Введите ваше имя:")
     bot.register_next_step_handler(msg, get_name)
 
 
-# --- ПОЛУЧЕНИЕ ИМЕНИ И ТЕЛЕФОНА ---
+# --- ЛОГИКА ЗАПИСИ ---
 def get_name(message):
     chat_id = message.chat.id
     if chat_id not in user_data:
-        return  # Если сессия уже была сброшена таймером
+        return
 
     user_data[chat_id]["name"] = message.text
-    user_data[chat_id]["timestamp"] = time.time()  # type: ignore # Обновляем таймер
+    user_data[chat_id]["timestamp"] = datetime.now().timestamp()
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     btn = types.KeyboardButton("Поделиться номером телефона", request_contact=True)
     markup.add(btn)
     msg = bot.send_message(
         chat_id,
-        "📞 Поделитесь номером телефона (нажмите кнопку внизу) или введите его вручную:",
+        "📞 Поделитесь номером телефона или введите его вручную:",
         reply_markup=markup,
     )
     bot.register_next_step_handler(msg, get_phone)
@@ -132,16 +145,14 @@ def get_phone(message):
         phone = message.text
 
     user_data[chat_id]["phone"] = phone
-    user_data[chat_id]["timestamp"] = time.time()  # type: ignore
+    user_data[chat_id]["timestamp"] = datetime.now().timestamp()
 
-    # Сначала удаляем Reply-клавиатуру, чтобы она не мешала инлайн-кнопкам
     bot.send_message(
         chat_id,
         "Отлично! Переходим к выбору услуг...",
         reply_markup=types.ReplyKeyboardRemove(),
     )
 
-    # Выводим услуги в виде Инлайн-кнопок
     markup = types.InlineKeyboardMarkup(row_width=1)
     for i, svc in enumerate(SERVICES):
         btn_text = f"{svc['name']} | {svc['price']} ₽ ({svc['duration']})"
@@ -150,7 +161,6 @@ def get_phone(message):
     bot.send_message(chat_id, "🎫 Выберите услугу из списка:", reply_markup=markup)
 
 
-# --- ОБРАБОТКА ВЫБОРА УСЛУГИ (ИНЛАЙН) ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("svc_"))
 def handle_select_service(call):
     chat_id = call.message.chat.id
@@ -163,7 +173,7 @@ def handle_select_service(call):
     svc_index = int(call.data.split("_")[1])
     selected_svc = SERVICES[svc_index]
     user_data[chat_id]["usluga"] = f"{selected_svc['name']} | {selected_svc['price']} ₽"
-    user_data[chat_id]["timestamp"] = time.time()  # type: ignore
+    user_data[chat_id]["timestamp"] = datetime.now().timestamp()
 
     days = database.get_available_days()
     if not days:
@@ -174,7 +184,6 @@ def handle_select_service(call):
         )
         return
 
-    # Строим инлайн-кнопки для дней
     markup = types.InlineKeyboardMarkup(row_width=3)
     buttons = [
         types.InlineKeyboardButton(day, callback_data=f"day_{day}") for day in days
@@ -189,7 +198,6 @@ def handle_select_service(call):
     )
 
 
-# --- ОБРАБОТКА ВЫБОРА ДНЯ (ИНЛАЙН) ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("day_"))
 def handle_select_day(call):
     chat_id = call.message.chat.id
@@ -201,7 +209,7 @@ def handle_select_day(call):
 
     day = call.data.split("_")[1]
     user_data[chat_id]["day"] = day
-    user_data[chat_id]["timestamp"] = time.time()  # type: ignore
+    user_data[chat_id]["timestamp"] = datetime.now().timestamp()
 
     times = database.get_free_slot(day)
     if not times:
@@ -212,7 +220,6 @@ def handle_select_day(call):
         )
         return
 
-    # Строим инлайн-кнопки для времени
     markup = types.InlineKeyboardMarkup(row_width=4)
     buttons = [types.InlineKeyboardButton(t, callback_data=f"time_{t}") for t in times]
     markup.add(*buttons)
@@ -225,7 +232,6 @@ def handle_select_day(call):
     )
 
 
-# --- ЗАВЕРШЕНИЕ ЗАПИСИ (ОБРАБОТКА ВРЕМЕНИ) ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("time_"))
 def handle_select_time(call):
     chat_id = call.message.chat.id
@@ -239,16 +245,13 @@ def handle_select_time(call):
     user_data[chat_id]["time"] = t_val
     d = user_data[chat_id]
 
-    # Сохраняем в базу данных
     database.save_zayvka(
         chat_id, d["name"], d["phone"], d["usluga"], d["day"], d["time"]
     )
     database.book_slot(d["day"], d["time"])
 
-    # Удаляем временную сессию, так как запись завершена
     user_data.pop(chat_id, None)
 
-    # Меняем текущее сообщение на финальное подтверждение
     bot.edit_message_text(
         f"✅ <b>Вы успешно записаны!</b>\n\n"
         f"👤 Имя: {d['name']}\n"
@@ -261,7 +264,6 @@ def handle_select_time(call):
         parse_mode="HTML",
     )
 
-    # Оповещаем админа
     bot.send_message(
         ADMIN_ID,
         f"🔔 <b>Новая запись!</b>\n👤 {d['name']} ({d['phone']})\n🎫 {d['usluga']}\n📅 {d['day']} в {d['time']}",
@@ -347,8 +349,7 @@ def add_slot_date(message):
         bot.register_next_step_handler(msg, add_slot_times)
     except ValueError:
         msg = bot.send_message(
-            ADMIN_ID,
-            "❌ Неверный формат даты. Используй ДД.ММ (например, 15.07). Введите еще раз:",
+            ADMIN_ID, "❌ Неверный формат даты. Используй ДД.ММ. Введите еще раз:"
         )
         bot.register_next_step_handler(msg, add_slot_date)
 
@@ -368,7 +369,7 @@ def add_slot_times(message):
     admin_menu()
 
 
-# --- АВТОМАТИЧЕСКИЕ ЗАДАЧИ СИСТЕМЫ (SCHEDULER) ---
+# --- АВТОМАТИЧЕСКИЕ ЗАДАЧИ ---
 def reminders():
     clients = database.get_clients_for_reminder(datetime.now())
     for user_id, name, time_val in clients:
@@ -385,19 +386,17 @@ def clear_old():
     database.clear_old_records()
 
 
-# Функция автоотмены зависших в процессе регистрации пользователей
+# Сброс зависших сессий через datetime
 def auto_cancel_sessions():
-    now = time.time()  # type: ignore
+    now = datetime.now().timestamp()
     expired_users = []
     for chat_id, data in list(user_data.items()):
-        # Если клиент не активничал больше 10 минут (600 секунд)
         if now - data.get("timestamp", now) > 600:
             expired_users.append(chat_id)
 
     for chat_id in expired_users:
         user_data.pop(chat_id, None)
         try:
-            # Сбрасываем ожидание текста, чтобы бот не ждал сообщений от этого юзера
             bot.clear_step_handler_by_chat_id(chat_id)
             bot.send_message(
                 chat_id,
@@ -411,9 +410,7 @@ def auto_cancel_sessions():
 scheduler = BackgroundScheduler()
 scheduler.add_job(reminders, "interval", minutes=1)
 scheduler.add_job(clear_old, "interval", minutes=10)
-scheduler.add_job(
-    auto_cancel_sessions, "interval", minutes=1
-)  # Проверка зависших раз в минуту
+scheduler.add_job(auto_cancel_sessions, "interval", minutes=1)
 scheduler.start()
 
 
